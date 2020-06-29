@@ -198,6 +198,7 @@ public class SignAppController {
 
         // Persist the keypair and associated certificate to non-volatile storage on the MIRkey device
         ks.setKeyEntry(cn, keyPair.getPrivate(), null, new X509Certificate[]{cert});
+        keysCb.getItems().add(cn);
     }
 
     private void populateKeyAliases(char[] pin) throws GeneralSecurityException, IOException {
