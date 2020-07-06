@@ -21,13 +21,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.security.*;
 import java.security.cert.Certificate;
+import java.util.Enumeration;
 
 /**
  * Sign a PDF using a MIRkey or eHSM hardware security module.
@@ -35,103 +31,57 @@ import java.security.cert.Certificate;
  * @author Kobus Grobler
  */
 public class PDFSigner {
+
     private static final Logger logger = LoggerFactory.getLogger(PDFSigner.class);
 
-    private static AuthProvider provider;
+    private final PKCS11Helper pkcs11Helper;
+
+    public PDFSigner() {
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(new BouncyCastleProvider());
+        }
+        pkcs11Helper = PKCS11Helper.getInstance();
+    }
 
     /**
      * Sign the provided PDF file.
      *
      * @param alias the key alias
-     * @param ksPIN the MIRkey/eHSM PIN
      * @param in    the input file name
      * @param out   the output stream for the signed file
      * @throws IOException              if the signing fails
      * @throws GeneralSecurityException if a security related exception occurs.
      */
-    public void sign(String alias, char[] ksPIN, String in, OutputStream out) throws IOException, GeneralSecurityException {
-        initProviders();
+    public void sign(String alias, String in, OutputStream out) throws IOException, GeneralSecurityException {
         logger.info("Signing {} with {}", in, alias);
-
         PdfSigner pdfSigner = new PdfSigner(new PdfReader(in), out, new StampingProperties());
+        KeyStore ks = pkcs11Helper.getKeyStore();
+        PrivateKeySignature pks = getPrivateKeySignature(ks, alias);
+        Certificate[] chain = getCertificateChain(ks, alias);
+        pdfSigner.signDetached(new BouncyCastleDigest(), pks, chain, null, null, null,
+                0, PdfSigner.CryptoStandard.CMS);
+    }
 
-        KeyStore ks = getKeyStore(ksPIN);
-        try {
-            PrivateKeySignature pks = getPrivateKeySignature(ks, ksPIN, alias);
-            Certificate[] chain = getCertificateChain(ks, alias);
-            pdfSigner.signDetached(new BouncyCastleDigest(), pks, chain, null, null, null,
-                    0, PdfSigner.CryptoStandard.CMS);
-
-        } finally {
-            provider.logout();
+    protected PrivateKeySignature getPrivateKeySignature(KeyStore ks, String alias) throws GeneralSecurityException {
+        PrivateKey pk = null;
+        Enumeration<String> aliases = ks.aliases();
+        while (aliases.hasMoreElements()) {
+            String a = aliases.nextElement();
+            if (alias.equals(a) && ks.isKeyEntry(a)) {
+                pk = (PrivateKey) ks.getKey(alias, null);
+                if (pk != null)
+                    break;
+            }
         }
-    }
-
-    public KeyStore getKeyStore(char[] password) throws IOException, GeneralSecurityException {
-        initProviders();
-        KeyStore ks = KeyStore.getInstance("PKCS11", provider);
-        ks.load(null, password);
-        return ks;
-    }
-
-    protected PrivateKeySignature getPrivateKeySignature(KeyStore ks, char[] password, String alias) throws GeneralSecurityException {
-        PrivateKey pk = (PrivateKey) ks.getKey(alias, password);
         if (pk == null) {
+            logger.warn("Private key for alias {} is null.",alias);
             return null;
         }
-        return new PrivateKeySignature(pk, DigestAlgorithms.SHA256, provider.getName());
+        return new PrivateKeySignature(pk, DigestAlgorithms.SHA256, pkcs11Helper.getProvider().getName());
     }
 
     protected Certificate[] getCertificateChain(KeyStore ks, String alias) throws GeneralSecurityException {
         return ks.getCertificateChain(alias);
     }
 
-    private static String getDefaultLibrary() {
-        String os = System.getProperty("os.name");
-        if (os.toLowerCase().contains("mac")) {
-            return "/usr/local/lib/libehsm.dylib";
-        } else if (os.toLowerCase().contains("windows")) {
-            return "ehsm.dll";
-        } else {
-            return "/usr/local/lib/libehsm.so";
-        }
-    }
-
-    private static void initProviders() {
-        if (provider == null) {
-            StringWriter sw = new StringWriter();
-            PrintWriter printWriter = new PrintWriter(sw);
-            printWriter.println("--name = MIRkey");
-            printWriter.println("slot = 0");
-            String lib = System.getenv("EHSM_LIBRARY");
-            if (lib == null) {
-                lib = getDefaultLibrary();
-            }
-            logger.info("Initializing PKCS11 provider with {}", lib);
-            printWriter.println("library = " + lib);
-            printWriter.flush();
-            try {
-                try {
-                    // jdk > 8
-                    Method configure = Provider.class.getDeclaredMethod("configure", String.class);
-                    provider = (AuthProvider)Security.getProvider("SunPKCS11");
-                    provider = (AuthProvider)configure.invoke(provider,sw.toString());
-                } catch (NoSuchMethodException nme) {
-                    // jdk 8
-                    Constructor construct = Class.forName("sun.security.pkcs11.SunPKCS11").getConstructor(String.class);
-                    provider = (AuthProvider)construct.newInstance(sw.toString());
-                }
-            } catch (InvocationTargetException | InstantiationException ite) {
-                logger.warn("Failed to init PKCS11 Provider.", ite);
-                provider = null;
-                throw new ProviderException(ite.getCause());
-            } catch (ReflectiveOperationException nse) {
-                logger.warn("Failed to create PKCS11 Provider.", nse);
-                provider = null;
-                throw new ProviderException(nse.getCause());
-            }
-            Security.addProvider(provider);
-            Security.addProvider(new BouncyCastleProvider());
-        }
-    }
 }

@@ -8,6 +8,9 @@
  */
 package com.ellipticsecure.apps.signer;
 
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
+import javafx.application.HostServices;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
@@ -17,10 +20,15 @@ import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.HBox;
 import javafx.stage.FileChooser;
+import javafx.util.Duration;
 import org.bouncycastle.operator.OperatorException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.security.auth.callback.Callback;
+import javax.security.auth.callback.CallbackHandler;
+import javax.security.auth.callback.PasswordCallback;
+import javax.security.auth.callback.UnsupportedCallbackException;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -35,17 +43,21 @@ import java.util.Optional;
  *
  * @author Kobus Grobler
  */
-public class SignAppController {
+public class SignAppController implements CallbackHandler {
     private static final Logger logger = LoggerFactory.getLogger(SignAppController.class);
 
     private final PDFSigner signer = new PDFSigner();
 
-    private char[] devicePIN;
-
     private File initialDir;
 
-    @FXML private DialogPane certDialogPane;
-    @FXML private CertFormController certDialogPaneController;
+    private PKCS11Helper pkcs11Helper;
+
+    private boolean loggedIn = false;
+
+    @FXML
+    private DialogPane certDialogPane;
+    @FXML
+    private CertFormController certDialogPaneController;
 
     @FXML
     private Button loginBt;
@@ -72,7 +84,7 @@ public class SignAppController {
     protected void dropFileAction(DragEvent evt) {
         Dragboard db = evt.getDragboard();
         boolean success = false;
-        if (db.hasFiles() && devicePIN != null && !keysCb.getSelectionModel().isEmpty()) {
+        if (db.hasFiles() && loggedIn && !keysCb.getSelectionModel().isEmpty()) {
             File fileIn = db.getFiles().get(0);
             if (fileIn.getName().toLowerCase().endsWith(".pdf")) {
                 success = true;
@@ -93,7 +105,7 @@ public class SignAppController {
                     try {
                         try (FileOutputStream fileOutputStream =
                                      new FileOutputStream(file.getAbsolutePath())) {
-                            signer.sign(keysCb.getSelectionModel().getSelectedItem(), devicePIN, fileIn.getAbsolutePath(), fileOutputStream);
+                            signer.sign(keysCb.getSelectionModel().getSelectedItem(), fileIn.getAbsolutePath(), fileOutputStream);
                         }
 
                         Alert alert = new Alert(Alert.AlertType.INFORMATION,
@@ -120,7 +132,7 @@ public class SignAppController {
         dialog.showAndWait().ifPresent(response -> {
             if (response == ButtonType.OK) {
                 try {
-                    generateTestCert((Integer)certDialogPaneController.validitySpinner.getValue(),
+                    generateTestCert(certDialogPaneController.validitySpinner.getValue(),
                             certDialogPaneController.cnTf.getText(),
                             certDialogPaneController.localityTf.getText(),
                             certDialogPaneController.countryTf.getText());
@@ -137,36 +149,38 @@ public class SignAppController {
 
     @FXML
     protected void loginBtAction(ActionEvent evt) {
-        if (devicePIN == null) {
-            char[] pin = getPIN();
-            if (pin != null) {
-                try {
-                    populateKeyAliases(pin);
+        if (!loggedIn) {
+            try {
+                populateKeyAliases();
 
-                    keysCb.setDisable(false);
-                    if (!keysCb.getItems().isEmpty()) {
-                        keysCb.getSelectionModel().select(0);
-                    } else {
-                        Alert alert = new Alert(Alert.AlertType.WARNING,
-                                "There are no certificates on the device that can be used for signing - create or import a certificate using the ellipticSecure Device Manager.",
-                                ButtonType.OK);
-                        alert.showAndWait();
-                    }
-                    dropTarget.setDisable(false);
-                    devicePIN = pin;
-                    generateCertBt.setDisable(false);
-                    loginBt.setText("Log out");
-                } catch (Exception e) {
-                    logger.warn("Failed to open keystore", e);
-                    String message = getErrorMessage(e);
-                    Alert alert = new Alert(Alert.AlertType.ERROR,
-                            "Failed to log in to device. (" + message + ")", ButtonType.OK);
+                keysCb.setDisable(false);
+                if (!keysCb.getItems().isEmpty()) {
+                    keysCb.getSelectionModel().select(0);
+                } else {
+                    Alert alert = new Alert(Alert.AlertType.WARNING,
+                            "There are no certificates on the device that can be used for signing - create or import a certificate using the ellipticSecure Device Manager.",
+                            ButtonType.OK);
                     alert.showAndWait();
                 }
+                dropTarget.setDisable(false);
+                loggedIn = true;
+                generateCertBt.setDisable(false);
+                loginBt.setText("Log out");
+            } catch (Exception e) {
+                logger.warn("Failed to open keystore", e);
+                String message = getErrorMessage(e);
+                Alert alert = new Alert(Alert.AlertType.ERROR,
+                        "Failed to log in to device. (" + message + ")", ButtonType.OK);
+                alert.showAndWait();
             }
         } else {
             loginBt.setText("Enter device PIN");
-            devicePIN = null;
+            try {
+                pkcs11Helper.cleanupProvider();
+            } catch (Exception e) {
+                logger.warn("An error occurred during cleanup.", e);
+            }
+            loggedIn = false;
             keysCb.getItems().clear();
             keysCb.setDisable(true);
             dropTarget.setDisable(true);
@@ -175,10 +189,10 @@ public class SignAppController {
     }
 
     private void generateTestCert(Integer validity, String cn, String locality, String country) throws OperatorException, GeneralSecurityException, IOException {
-        KeyStore ks = signer.getKeyStore(devicePIN);
+        KeyStore ks = pkcs11Helper.getKeyStore();
         if (ks.containsAlias(cn)) {
             Alert alert = new Alert(Alert.AlertType.ERROR,
-                    "The device already contains a certificate with name "+cn, ButtonType.OK);
+                    "The device already contains a certificate with name " + cn, ButtonType.OK);
             alert.showAndWait();
             return;
         }
@@ -199,16 +213,18 @@ public class SignAppController {
         // Persist the keypair and associated certificate to non-volatile storage on the MIRkey device
         ks.setKeyEntry(cn, keyPair.getPrivate(), null, new X509Certificate[]{cert});
         keysCb.getItems().add(cn);
+        keysCb.getSelectionModel().select(cn);
     }
 
-    private void populateKeyAliases(char[] pin) throws GeneralSecurityException, IOException {
+    private void populateKeyAliases() throws GeneralSecurityException, IOException {
         keysCb.getItems().clear();
-        KeyStore ks = signer.getKeyStore(pin);
+        KeyStore ks = pkcs11Helper.getKeyStore();
         Enumeration<String> aliases = ks.aliases();
         while (aliases.hasMoreElements()) {
             String alias = aliases.nextElement();
+            logger.debug("Keystore alias: {}", alias);
             if (ks.isKeyEntry(alias)) {
-                PrivateKey pk = (PrivateKey) ks.getKey(alias, pin);
+                PrivateKey pk = (PrivateKey) ks.getKey(alias, null);
                 if (pk != null)
                     keysCb.getItems().add(alias);
             }
@@ -223,7 +239,11 @@ public class SignAppController {
             while (c.getCause() != null) {
                 c = c.getCause();
             }
-            message += ":" + c.getMessage();
+            if (message != null) {
+                message += ":" + c.getMessage();
+            } else {
+                message = c.getMessage();
+            }
         }
         return message;
     }
@@ -252,4 +272,30 @@ public class SignAppController {
         return result.map(String::toCharArray).orElse(null);
     }
 
+    public void iconClickAction(ActionEvent evt) {
+        HostServices hostServices = Main.getInstance().getHostServices();
+        hostServices.showDocument("https://ellipticsecure.com");
+    }
+
+    @FXML
+    public void initialize() {
+        pkcs11Helper = PKCS11Helper.getInstance();
+        pkcs11Helper.setCallbackHandler(this);
+
+        Timeline timer = new Timeline(new KeyFrame(Duration.seconds(30),
+                event -> pkcs11Helper.keepalive()));
+        timer.setCycleCount(Timeline.INDEFINITE);
+        timer.play();
+    }
+
+    @Override
+    public void handle(Callback[] callbacks)
+            throws java.io.IOException, UnsupportedCallbackException {
+        for (Callback callback : callbacks) {
+            if (callback instanceof PasswordCallback) {
+                PasswordCallback pc = (PasswordCallback) callback;
+                pc.setPassword(getPIN());
+            }
+        }
+    }
 }

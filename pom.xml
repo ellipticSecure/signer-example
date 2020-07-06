@@ -10,15 +10,21 @@
 
     <name>signer-app</name>
     <description>ellipticSecure Signer Example</description>
+    <url>https://github.com/ellipticSecure/signer-example</url>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <jdk.version>1.8</jdk.version>
-        <slf4j.version>1.7.25</slf4j.version>
+        <slf4j.version>1.7.30</slf4j.version>
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>com.ellipticsecure</groupId>
+            <artifactId>ehsm-java</artifactId>
+            <version>1.0.3</version>
+        </dependency>
         <dependency>
             <groupId>com.itextpdf</groupId>
             <artifactId>sign</artifactId>
@@ -28,7 +34,6 @@
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-fxml</artifactId>
             <version>11</version>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -133,6 +138,14 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.4</version>
+                <configuration>
+                    <mainClass>com.ellipticsecure.apps.signer.Main</mainClass>
+                </configuration>
             </plugin>
         </plugins>
     </build>

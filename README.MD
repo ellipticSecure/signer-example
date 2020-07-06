@@ -15,3 +15,20 @@
 3. If you do not have a certificate on your device, use the "Generate Test Certificate" button to test. 
 ##### Note: You may need to set the EHSM_LIBRARY environment variable if your libehsm.so/dylib/dll is not in a standard location.
 
+### Some screenshots of the sample app
+
+#### Main screen
+![Image of main screen](images/main.png)
+
+#### PIN entry
+![Enter PIN](images/enter-pin.png)
+
+#### Logged in
+![Logged In](images/logged-in.png)
+
+#### Test certificate creation
+![Test cert dialog](images/certinfo.png)
+
+#### PDF signed
+![Signed](images/signed.png)
+

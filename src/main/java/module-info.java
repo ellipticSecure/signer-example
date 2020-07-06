@@ -7,7 +7,8 @@ module signer.example {
     requires javafx.fxml;
     requires javafx.controls;
 
-    requires slf4j.api;
+    requires org.slf4j.jul;
+    requires org.slf4j;
 
     // bc
     requires org.bouncycastle.provider;
@@ -16,6 +17,9 @@ module signer.example {
     // itext
     requires sign;
     requires kernel;
+
+    requires ehsm.java;
+    requires com.sun.jna;
 
     exports com.ellipticsecure.apps.signer;
     opens com.ellipticsecure.apps.signer to javafx.fxml;

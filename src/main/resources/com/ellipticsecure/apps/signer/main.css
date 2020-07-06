@@ -1,0 +1,20 @@
+.root {
+    -fx-font-family: "Arial";
+}
+
+.label {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+#dropTarget {
+    -fx-font-size: 14px;
+}
+
+.button {
+    -fx-font-size: 16px;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-color: linear-gradient(#00a79d, #2A5058);
+    -fx-effect: dropshadow( three-pass-box , rgba(0,0,0,0.6) , 5, 0.0 , 0 , 1 );
+}
