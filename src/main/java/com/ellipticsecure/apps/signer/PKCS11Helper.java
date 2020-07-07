@@ -12,6 +12,7 @@ package com.ellipticsecure.apps.signer;
 import com.ellipticsecure.ehsm.CKTokenInfo;
 import com.ellipticsecure.ehsm.EHSMConfig;
 import com.ellipticsecure.ehsm.EHSMLibrary;
+import com.sun.jna.NativeLibrary;
 import com.sun.jna.NativeLong;
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.NativeLongByReference;
@@ -171,6 +172,9 @@ public class PKCS11Helper {
                     ehsmlib.C_Finalize(Pointer.NULL);
                 }
             }
+
+            NativeLibrary nativeLibrary = NativeLibrary.getInstance(EHSMLibrary.getDefaultLibraryName());
+            lib = nativeLibrary.getFile().getAbsolutePath(); // SunPKCS11 requires absolute .dll path on Windows.
 
             logger.debug("Initializing PKCS11 provider with {}", lib);
             StringWriter sw = new StringWriter();

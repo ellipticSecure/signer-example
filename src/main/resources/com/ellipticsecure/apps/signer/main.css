@@ -11,6 +11,11 @@
     -fx-font-size: 14px;
 }
 
+#certDescription {
+    -fx-font-size: 12px;
+    -fx-font-weight: normal;
+}
+
 .button {
     -fx-font-size: 16px;
     -fx-text-fill: white;

@@ -30,7 +30,7 @@ public class Main extends Application {
         instance = this;
         Parent root = FXMLLoader.load(getClass().getResource("main.fxml"));
         primaryStage.getIcons().add(new Image(getClass().getResourceAsStream("icon_512x512.png")));
-        primaryStage.setTitle("ellipticSecure PDF Signer v0.1");
+        primaryStage.setTitle("ellipticSecure PDF Signer v0.2");
         primaryStage.setScene(new Scene(root));
         primaryStage.setResizable(false);
         primaryStage.show();

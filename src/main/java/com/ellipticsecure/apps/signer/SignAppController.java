@@ -11,7 +11,6 @@ package com.ellipticsecure.apps.signer;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.HostServices;
-import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -28,7 +27,6 @@ import org.slf4j.LoggerFactory;
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.PasswordCallback;
-import javax.security.auth.callback.UnsupportedCallbackException;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -36,6 +34,8 @@ import java.security.*;
 import java.security.cert.X509Certificate;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -70,6 +70,11 @@ public class SignAppController implements CallbackHandler {
 
     @FXML
     private ChoiceBox<String> keysCb;
+
+    @FXML
+    private TextArea certDescription;
+
+    private final Map<String, X509Certificate> aliasMap = new HashMap<>();
 
     @FXML
     protected void dragOver(DragEvent evt) {
@@ -126,7 +131,7 @@ public class SignAppController implements CallbackHandler {
     }
 
     @FXML
-    protected void generateCertBtAction(ActionEvent evt) {
+    protected void generateCertBtAction() {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setDialogPane(certDialogPane);
         dialog.showAndWait().ifPresent(response -> {
@@ -148,10 +153,10 @@ public class SignAppController implements CallbackHandler {
     }
 
     @FXML
-    protected void loginBtAction(ActionEvent evt) {
+    protected void loginBtAction() {
         if (!loggedIn) {
             try {
-                populateKeyAliases();
+                populatePrivateKeyAliases();
 
                 keysCb.setDisable(false);
                 if (!keysCb.getItems().isEmpty()) {
@@ -182,9 +187,11 @@ public class SignAppController implements CallbackHandler {
             }
             loggedIn = false;
             keysCb.getItems().clear();
+            aliasMap.clear();
             keysCb.setDisable(true);
             dropTarget.setDisable(true);
             generateCertBt.setDisable(true);
+            certDescription.setText("");
         }
     }
 
@@ -212,21 +219,27 @@ public class SignAppController implements CallbackHandler {
 
         // Persist the keypair and associated certificate to non-volatile storage on the MIRkey device
         ks.setKeyEntry(cn, keyPair.getPrivate(), null, new X509Certificate[]{cert});
+        aliasMap.put(cn,(X509Certificate)ks.getCertificate(cn));
         keysCb.getItems().add(cn);
         keysCb.getSelectionModel().select(cn);
     }
 
-    private void populateKeyAliases() throws GeneralSecurityException, IOException {
+    private void populatePrivateKeyAliases() throws GeneralSecurityException, IOException {
         keysCb.getItems().clear();
+        aliasMap.clear();
         KeyStore ks = pkcs11Helper.getKeyStore();
         Enumeration<String> aliases = ks.aliases();
         while (aliases.hasMoreElements()) {
             String alias = aliases.nextElement();
             logger.debug("Keystore alias: {}", alias);
             if (ks.isKeyEntry(alias)) {
-                PrivateKey pk = (PrivateKey) ks.getKey(alias, null);
-                if (pk != null)
+                Key key = ks.getKey(alias, null);
+                if (key instanceof PrivateKey) {
+                    X509Certificate cert = (X509Certificate)ks.getCertificate(alias);
+                    logger.info("Cert: {}",cert);
                     keysCb.getItems().add(alias);
+                    aliasMap.put(alias, cert);
+                }
             }
         }
     }
@@ -272,9 +285,14 @@ public class SignAppController implements CallbackHandler {
         return result.map(String::toCharArray).orElse(null);
     }
 
-    public void iconClickAction(ActionEvent evt) {
+    public void iconClickAction() {
         HostServices hostServices = Main.getInstance().getHostServices();
         hostServices.showDocument("https://ellipticsecure.com");
+    }
+
+    private void displaySelectedCert(String alias) {
+        X509Certificate cert = aliasMap.get(alias);
+        certDescription.setText(cert.toString());
     }
 
     @FXML
@@ -286,11 +304,13 @@ public class SignAppController implements CallbackHandler {
                 event -> pkcs11Helper.keepalive()));
         timer.setCycleCount(Timeline.INDEFINITE);
         timer.play();
+
+        keysCb.getSelectionModel().selectedItemProperty().addListener((observableValue, old, newVal)
+                -> displaySelectedCert(newVal));
     }
 
     @Override
-    public void handle(Callback[] callbacks)
-            throws java.io.IOException, UnsupportedCallbackException {
+    public void handle(Callback[] callbacks) {
         for (Callback callback : callbacks) {
             if (callback instanceof PasswordCallback) {
                 PasswordCallback pc = (PasswordCallback) callback;

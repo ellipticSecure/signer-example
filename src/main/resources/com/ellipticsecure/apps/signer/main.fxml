@@ -22,36 +22,35 @@
             <Button fx:id="generateCertBt" disable="true" onAction="#generateCertBtAction" prefHeight="50.0" prefWidth="240.0">
                 Generate Test Certificate
             </Button>
+            <Label text="Select signing certificate:" />
+            <HBox alignment="CENTER">
+                <ChoiceBox fx:id="keysCb" disable="true" prefHeight="50.0" prefWidth="210.0" HBox.hgrow="ALWAYS" />
+                <Hyperlink alignment="TOP_LEFT" onAction="#iconClickAction">
+                    <graphic>
+                        <ImageView fitWidth="50.0" pickOnBounds="true" preserveRatio="true">
+                            <Image url="@icon_512x512.png" />
+                        </ImageView>
+                    </graphic>
+                </Hyperlink>
+            </HBox>
+            <TextArea id="certDescription" fx:id="certDescription" editable="false"
+                      maxHeight="200.0" minHeight="200.0" minWidth="350.0" />
         </VBox>
     </center>
-    <bottom>
-        <HBox alignment="TOP_CENTER" spacing="10.0" BorderPane.alignment="CENTER">
+    <left>
+        <VBox alignment="CENTER" spacing="10.0" BorderPane.alignment="BOTTOM_LEFT">
             <children>
-                <VBox>
-                    <children>
-                        <Label text="Select certificate:" />
-                        <ChoiceBox fx:id="keysCb" disable="true" prefHeight="50.0" prefWidth="210.0" />
-                    </children>
-                </VBox>
-                <Label id="dropTarget" fx:id="dropTarget" disable="true" onDragDropped="#dropFileAction" onDragOver="#dragOver" prefHeight="100.0" prefWidth="200.0" style="-fx-padding: 5; -fx-border-radius:5; -fx-border-style: dotted;">Drop PDF file here to sign
+                <Label id="dropTarget" fx:id="dropTarget" alignment="CENTER" contentDisplay="CENTER" disable="true" onDragDropped="#dropFileAction" onDragOver="#dragOver" prefHeight="400.0" style="-fx-border-radius:5; -fx-border-style: dotted;" text="Drop PDF file here to sign" wrapText="true" VBox.vgrow="ALWAYS">
+                    <padding>
+                        <Insets left="10.0" right="10.0" />
+                    </padding>
                 </Label>
             </children>
-            <padding>
-                <Insets top="10.0" />
-            </padding>
-        </HBox>
-    </bottom>
-   <left>
-       <Hyperlink onAction="#iconClickAction">
-           <graphic>
-               <ImageView fitWidth="80.0" pickOnBounds="true" preserveRatio="true">
-                   <image>
-                       <Image url="@icon_512x512.png"/>
-                   </image>
-               </ImageView>
-           </graphic>
-       </Hyperlink>
-   </left>
+         <padding>
+            <Insets right="10.0" />
+         </padding>
+        </VBox>
+    </left>
     <stylesheets>
         <URL value="@main.css" />
     </stylesheets>
