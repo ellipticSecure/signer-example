@@ -50,9 +50,11 @@ public class SignAppController implements CallbackHandler {
 
     private File initialDir;
 
-    private PKCS11Helper pkcs11Helper;
+    private ProviderHelper pkcs11Helper;
 
     private boolean loggedIn = false;
+
+    private boolean pinEntryCanceled;
 
     @FXML
     private DialogPane certDialogPane;
@@ -156,6 +158,7 @@ public class SignAppController implements CallbackHandler {
     protected void loginBtAction() {
         if (!loggedIn) {
             try {
+                pinEntryCanceled = false;
                 populatePrivateKeyAliases();
 
                 keysCb.setDisable(false);
@@ -172,11 +175,15 @@ public class SignAppController implements CallbackHandler {
                 generateCertBt.setDisable(false);
                 loginBt.setText("Log out");
             } catch (Exception e) {
-                logger.warn("Failed to open keystore", e);
-                String message = getErrorMessage(e);
-                Alert alert = new Alert(Alert.AlertType.ERROR,
-                        "Failed to log in to device. (" + message + ")", ButtonType.OK);
-                alert.showAndWait();
+                // check if PIN entry was cancelled. SunPKCS11 continues with (null) login regardless, so swallow
+                // the error.
+                if (!pinEntryCanceled) {
+                    logger.warn("Failed to open keystore", e);
+                    String message = getErrorMessage(e);
+                    Alert alert = new Alert(Alert.AlertType.ERROR,
+                            "Failed to log in to device. (" + message + ")", ButtonType.OK);
+                    alert.showAndWait();
+                }
             }
         } else {
             loginBt.setText("Enter device PIN");
@@ -277,6 +284,7 @@ public class SignAppController implements CallbackHandler {
             if (dialogButton == ButtonType.OK) {
                 return pwd.getText();
             }
+            pinEntryCanceled = true;
             return null;
         });
         pwd.setFocusTraversable(true);
@@ -292,12 +300,14 @@ public class SignAppController implements CallbackHandler {
 
     private void displaySelectedCert(String alias) {
         X509Certificate cert = aliasMap.get(alias);
-        certDescription.setText(cert.toString());
+        if (cert != null) {
+            certDescription.setText(cert.toString());
+        }
     }
 
     @FXML
     public void initialize() {
-        pkcs11Helper = PKCS11Helper.getInstance();
+        pkcs11Helper = EHSMProviderHelper.getInstance();
         pkcs11Helper.setCallbackHandler(this);
 
         Timeline timer = new Timeline(new KeyFrame(Duration.seconds(30),

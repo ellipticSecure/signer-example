@@ -34,13 +34,13 @@ public class PDFSigner {
 
     private static final Logger logger = LoggerFactory.getLogger(PDFSigner.class);
 
-    private final PKCS11Helper pkcs11Helper;
+    private final ProviderHelper pkcs11Helper;
 
     public PDFSigner() {
         if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
             Security.addProvider(new BouncyCastleProvider());
         }
-        pkcs11Helper = PKCS11Helper.getInstance();
+        pkcs11Helper = EHSMProviderHelper.getInstance();
     }
 
     /**

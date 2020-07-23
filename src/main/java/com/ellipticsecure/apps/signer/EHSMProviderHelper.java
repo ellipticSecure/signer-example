@@ -9,6 +9,7 @@
 
 package com.ellipticsecure.apps.signer;
 
+import com.ellipticsecure.ehsm.CKInfo;
 import com.ellipticsecure.ehsm.CKTokenInfo;
 import com.ellipticsecure.ehsm.EHSMConfig;
 import com.ellipticsecure.ehsm.EHSMLibrary;
@@ -28,7 +29,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.security.*;
 
-import static com.ellipticsecure.ehsm.CKFlags.CKF_SERIAL_SESSION;
 import static com.ellipticsecure.ehsm.CKFlags.CKF_TOKEN_INITIALIZED;
 import static com.ellipticsecure.ehsm.CKReturnValues.CKR_OK;
 
@@ -37,11 +37,11 @@ import static com.ellipticsecure.ehsm.CKReturnValues.CKR_OK;
  *
  * @author Kobus Grobler
  */
-public class PKCS11Helper {
+public class EHSMProviderHelper implements ProviderHelper {
 
-    private static final Logger logger = LoggerFactory.getLogger(PKCS11Helper.class);
+    private static final Logger logger = LoggerFactory.getLogger(EHSMProviderHelper.class);
 
-    private static PKCS11Helper instance;
+    private static ProviderHelper instance;
 
     private long slot = 0;
 
@@ -53,23 +53,24 @@ public class PKCS11Helper {
 
     private CallbackHandler callbackHandler;
 
-    private PKCS11Helper() {}
+    private EHSMProviderHelper() {}
 
     /**
-     * Returns an instance of the PKCS11Helper class.
+     * Returns an instance of the EHSMProviderHelper class.
      * @return the instance
      */
-    public static PKCS11Helper getInstance() {
-        if (instance == null) {
-            instance = new PKCS11Helper();
+    static ProviderHelper getInstance() {
+        if (EHSMProviderHelper.instance == null) {
+            EHSMProviderHelper.instance = new EHSMProviderHelper();
         }
-        return instance;
+        return EHSMProviderHelper.instance;
     }
 
     /**
      * Set the callback handler that will prompt the user for a PIN when required.
      * @param handler the callback handler
      */
+    @Override
     public void setCallbackHandler(CallbackHandler handler) {
         callbackHandler = handler;
         if (provider != null) {
@@ -81,6 +82,7 @@ public class PKCS11Helper {
      * Return an initialized and configured PKCS11 provider.
      * @return the provider
      */
+    @Override
     public AuthProvider getProvider() {
         initProvider();
         return provider;
@@ -93,6 +95,7 @@ public class PKCS11Helper {
      * @throws IOException if an io related error occurs
      * @throws GeneralSecurityException if a security exception occurs
      */
+    @Override
     public KeyStore getKeyStore() throws IOException, GeneralSecurityException {
         KeyStore ks = KeyStore.getInstance("PKCS11", getProvider());
         provider.login(null, null);
@@ -104,6 +107,7 @@ public class PKCS11Helper {
      * Cleans up the provider instance and logs out from the device.
      * @throws GeneralSecurityException if a security error occurs during cleanup.
      */
+    @Override
     public void cleanupProvider() throws GeneralSecurityException {
         if (provider != null) {
             provider.logout();
@@ -122,15 +126,14 @@ public class PKCS11Helper {
      * has been configured to automatically close sessions after a specified timeout. This method will
      * keep the sessions alive.
      */
+    @Override
     public void keepalive() {
-        if (ehsmlib != null && sessionTimeoutsEnabled) {
-            NativeLongByReference pSession = new NativeLongByReference();
-
-            // This is just to keep sessions alive if a session timeout has been configured.
-            // The SunPKCS11 provider does not recover from CRK_SESSION_INVALID errors.
-            long r = ehsmlib.C_OpenSession(new NativeLong(slot), new NativeLong(CKF_SERIAL_SESSION), Pointer.NULL, Pointer.NULL, pSession);
-            if (r == CKR_OK) {
-                ehsmlib.C_CloseSession(pSession.getValue());
+        if (provider != null && sessionTimeoutsEnabled) {
+            try {
+                logger.debug("Performing keep alive");
+                getKeyStore(); // this just ensures the sessions are kept active.
+            } catch (Exception exception) {
+                logger.warn("Failed to perform keepalive.",exception);
             }
         }
     }
@@ -147,6 +150,15 @@ public class PKCS11Helper {
             }
             long r = ehsmlib.C_Initialize(Pointer.NULL);
             try {
+                CKInfo libInfo = new CKInfo();
+                EHSMLibrary.throwIfNotOK(ehsmlib.C_GetInfo(libInfo));
+                if (libInfo.libraryVersion.major < 2) {
+                    throw new ProviderException("The eHSM device library is too old, major version is "+libInfo.libraryVersion.major);
+                }
+                if (libInfo.libraryVersion.major == 2 && libInfo.libraryVersion.minor < 4) {
+                    throw new ProviderException("The eHSM device library is too old, version is "+libInfo.libraryVersion.major+"."+
+                            libInfo.libraryVersion.minor);
+                }
                 NativeLong[] pSlotList = new NativeLong[10];
                 NativeLongByReference pCount = new NativeLongByReference(new NativeLong(pSlotList.length));
                 EHSMLibrary.throwIfNotOK(ehsmlib.C_GetSlotList((byte) 1, pSlotList, pCount));
@@ -175,7 +187,6 @@ public class PKCS11Helper {
 
             NativeLibrary nativeLibrary = NativeLibrary.getInstance(EHSMLibrary.getDefaultLibraryName());
             lib = nativeLibrary.getFile().getAbsolutePath(); // SunPKCS11 requires absolute .dll path on Windows.
-
             logger.debug("Initializing PKCS11 provider with {}", lib);
             StringWriter sw = new StringWriter();
             PrintWriter printWriter = new PrintWriter(sw);
