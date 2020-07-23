@@ -19,6 +19,7 @@ jobs:
           java-version: 11
       - name: Build with Maven
         run: mvn -B package --file pom.xml
+      - run: echo ::set-env name=PROJECT_VERSION::$(mvn -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec)
       - run: mkdir staging && cp target/*-dependencies.jar staging
       - uses: actions/upload-artifact@v1
         with:
@@ -30,8 +31,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: 0.0.3
-          release_name: Release 0.0.3
+          tag_name: ${{ env.PROJECT_VERSION }}
+          release_name: Release ${{ env.PROJECT_VERSION }}
           draft: false
           prerelease: false
       - name: Upload Release Asset
@@ -41,6 +42,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: staging/signer-app-0.0.3-SNAPSHOT-jar-with-dependencies.jar
-          asset_name: signer-app-0.0.3.jar
+          asset_path: staging/signer-app-${{ env.PROJECT_VERSION }}-jar-with-dependencies.jar
+          asset_name: signer-app-${{ env.PROJECT_VERSION }}.jar
           asset_content_type: application/java-archive
