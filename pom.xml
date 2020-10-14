@@ -5,7 +5,7 @@
 
     <groupId>com.ellipticsecure</groupId>
     <artifactId>signer-app</artifactId>
-    <version>0.0.4-SNAPSHOT</version>
+    <version>0.0.5-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>signer-app</name>
@@ -23,7 +23,7 @@
         <dependency>
             <groupId>com.ellipticsecure</groupId>
             <artifactId>ehsm-java</artifactId>
-            <version>1.0.4</version>
+            <version>1.0.5</version>
         </dependency>
         <dependency>
             <groupId>com.itextpdf</groupId>
@@ -48,7 +48,7 @@
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.12</version>
+            <version>4.13.1</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
